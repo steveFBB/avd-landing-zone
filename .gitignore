@@ -1,0 +1,15 @@
+# Real customer parameter files (never committed)
+parameters.*.bicepparam
+!parameters.example.bicepparam
+
+# Bicep build artifacts
+*.json
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets
+*.env
+*.secrets
