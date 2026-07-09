@@ -2,7 +2,7 @@
 
 Infrastructure-as-code for deploying Azure Virtual Desktop environments.
 
-Deploys 5 resource groups, 4 VNets with subnets and peerings, and an FSLogix storage account.
+Deploys 5 resource groups, 4 VNets with subnets and peerings, an FSLogix storage account, a Log Analytics workspace, and diagnostic settings on the networking and storage resources.
 
 ## Structure
 
@@ -14,9 +14,10 @@ Deploys 5 resource groups, 4 VNets with subnets and peerings, and an FSLogix sto
 
 **Chunk 1 complete:** foundation networking (4 VNets, subnets, peerings) and FSLogix storage account.
 
+**Chunk 2 complete:** Log Analytics workspace and diagnostic settings on VNets and storage.
+
 ### Roadmap
 
-- Chunk 2 - Log Analytics workspace and base diagnostic settings
 - Chunk 3 - NSGs and route tables
 - Chunk 4 - Private endpoint, private DNS, and storage RBAC
 - Chunk 5 - AVD control plane (host pool, workspace, application groups)
@@ -70,6 +71,7 @@ Open the new file and set at minimum:
 
 - `location` - Azure region (e.g. `westus`, `uksouth`)
 - `storageAccountName` - globally unique, lowercase letters and digits, 3–24 chars
+- `logAnalyticsWorkspaceName` - must be unique within the resource group
 - All resource group names, VNet names, and IP ranges appropriate to the customer
 
 ### 2. Log in to Azure
@@ -107,6 +109,8 @@ Check in the Azure Portal:
 - All five resource groups exist
 - Each VNet shows its peerings as `Connected` on both sides
 - FSLogix storage account has the `profiles` file share
+- Log Analytics workspace exists in the mgmt resource group
+- Each VNet and the storage account has a diagnostic setting pointing at the workspace
 
 ## Teardown
 
@@ -122,4 +126,4 @@ az group delete --name rg-storage --yes --no-wait
 
 Adjust the resource group names to match your parameters file if you changed them.
 
-Note: storage account names remain globally reserved for a period after deletion.
+Note: storage account names remain globally reserved for a period after deletion. Log Analytics workspaces are soft-deleted for 14 days by default before permanent removal.
