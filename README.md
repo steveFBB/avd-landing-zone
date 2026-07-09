@@ -11,7 +11,7 @@ Infrastructure-as-code for deploying Azure Virtual Desktop environments.
 ## Status
 
 **Chunk 1 complete:** foundation networking (4 VNets, subnets, peerings) and FSLogix storage account.
-Validated via `what-if`; not yet deployed.
+Validated via `what-if`.
 
 **Next:** chunk 2 - Log Analytics workspace and base diagnostic settings.
 
