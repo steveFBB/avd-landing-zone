@@ -2,25 +2,117 @@
 
 Infrastructure-as-code for deploying Azure Virtual Desktop environments.
 
-# Structure
+## Structure
 
-- main.bicep - subscription-scoped entry point
-- parameters.example.bicepparam — example parameters; copy and edit per customer
-- modules/ - per-resource modules
+- `main.bicep` - subscription-scoped entry point
+- `parameters.example.bicepparam` - example parameters; copy and edit per customer
+- `modules/` - per-resource modules
 
-# Status
+## Status
 
-Chunk 1 complete: foundation networking (4 VNets, subnets, peerings) and FSLogix storage account.
-Validated via what-if; not yet deployed.
+**Chunk 1 complete:** foundation networking (4 VNets, subnets, peerings) and FSLogix storage account.
+Validated via `what-if`; not yet deployed.
 
-Next: chunk 2 - Log Analytics workspace and base diagnostic settings.
+**Next:** chunk 2 - Log Analytics workspace and base diagnostic settings.
 
-# Deploy
+## Prerequisites
 
-az deployment sub create `
-  --location <region> `
-  --name "avd-foundation-$(Get-Date -Format 'yyyyMMdd-HHmm')" `
-  --template-file main.bicep `
-  --parameters parameters.example.bicepparam
+- Azure CLI installed (`az --version` to check)
+- Bicep CLI installed (`az bicep version` to check; `az bicep install` if missing)
+- Contributor or Owner role at the target subscription scope
 
-Customer-specific deployments should use a copy of parameters.example.bicepparam named parameters.<customer>.bicepparam (gitignored).
+## Getting started
+
+### Clone the repo locally
+
+Open the terminal in Studio Code (**Terminal → New Terminal**) and run:
+
+```
+mkdir C:\Projects
+cd C:\Projects
+git clone https://github.com/steveFBB/avd-bicep.git
+cd avd-bicep
+```
+
+If `C:\Projects` already exists, you'll get an error on the first line - ignore it and continue.
+
+### Open the cloned repo in Studio Code
+
+**File → Open Folder →** select `C:\Projects\avd-bicep`.
+
+### Recommended extensions
+
+- **Bicep** (publisher: Microsoft) - syntax highlighting and inline validation for `.bicep` files
+- **Azure CLI Tools** (optional) - helpful for running `az` commands
+
+## Running the deployment
+
+Placeholders like `<region>` and `<customer>` need to be replaced with real values each time. You can't just copy and paste.
+
+### 1. Create a customer-specific parameters file
+
+Copy the example and edit for the target environment. Real customer files are gitignored (only `parameters.example.bicepparam` gets committed):
+
+```
+copy parameters.example.bicepparam parameters.<customer>.bicepparam
+```
+
+Open the new file and set at minimum:
+
+- `location` — Azure region (e.g. `westus`, `uksouth`)
+- `storageAccountName` - globally unique, lowercase letters and digits, 3–24 chars
+- All resource group names, VNet names, and IP ranges appropriate to the customer
+
+### 2. Log in to Azure
+
+```
+az login
+az account set --subscription "<subscription-name-or-id>"
+az account show
+```
+
+The last command confirms which subscription is active. Check the name matches what you expect before continuing.
+
+### 3. Dry-run with what-if
+
+Always run this before deploying. It shows exactly what would change without making any changes:
+
+```
+az deployment sub what-if --location <region> --template-file main.bicep --parameters parameters.<customer>.bicepparam
+```
+
+Expected result for a first-time deploy: 28 resources to create, 0 to modify.
+
+If you see resources marked as **modify** or **delete**, stop and read carefully — you may be about to change something that already exists in the subscription.
+
+### 4. Deploy
+
+```
+az deployment sub create --location <region> --name "avd-foundation" --template-file main.bicep --parameters parameters.<customer>.bicepparam
+```
+
+Deployment takes 3–5 minutes.
+
+### 5. Validate
+
+Check in the Azure Portal:
+
+- All five resource groups exist
+- Each VNet shows its peerings as `Connected` on both sides
+- FSLogix storage account has the `profiles` file share
+
+## Teardown
+
+To delete everything created by this template:
+
+```
+az group delete --name rg-hub --yes --no-wait
+az group delete --name rg-mgmt --yes --no-wait
+az group delete --name rg-avd --yes --no-wait
+az group delete --name rg-prod --yes --no-wait
+az group delete --name rg-storage --yes --no-wait
+```
+
+Adjust the resource group names to match your parameters file if you changed them.
+
+Note: storage account names remain globally reserved for a period after deletion.
