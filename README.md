@@ -2,6 +2,8 @@
 
 Infrastructure-as-code for deploying Azure Virtual Desktop environments.
 
+Deploys 5 resource groups, 4 VNets with subnets and peerings, and an FSLogix storage account.
+
 ## Structure
 
 - `main.bicep` - subscription-scoped entry point
@@ -11,9 +13,16 @@ Infrastructure-as-code for deploying Azure Virtual Desktop environments.
 ## Status
 
 **Chunk 1 complete:** foundation networking (4 VNets, subnets, peerings) and FSLogix storage account.
-Validated via `what-if`.
 
-**Next:** chunk 2 - Log Analytics workspace and base diagnostic settings.
+### Roadmap
+
+- Chunk 2 - Log Analytics workspace and base diagnostic settings
+- Chunk 3 - NSGs and route tables
+- Chunk 4 - Private endpoint, private DNS, and storage RBAC
+- Chunk 5 - AVD control plane (host pool, workspace, application groups)
+- Chunk 6 - Session hosts
+- Chunk 7 - Bastion
+- Chunk 8 - Backup and alerts
 
 ## Prerequisites
 
@@ -59,7 +68,7 @@ copy parameters.example.bicepparam parameters.<customer>.bicepparam
 
 Open the new file and set at minimum:
 
-- `location` — Azure region (e.g. `westus`, `uksouth`)
+- `location` - Azure region (e.g. `westus`, `uksouth`)
 - `storageAccountName` - globally unique, lowercase letters and digits, 3–24 chars
 - All resource group names, VNet names, and IP ranges appropriate to the customer
 
@@ -81,9 +90,7 @@ Always run this before deploying. It shows exactly what would change without mak
 az deployment sub what-if --location <region> --template-file main.bicep --parameters parameters.<customer>.bicepparam
 ```
 
-Expected result for a first-time deploy: 28 resources to create, 0 to modify.
-
-If you see resources marked as **modify** or **delete**, stop and read carefully — you may be about to change something that already exists in the subscription.
+If you see resources marked as **modify** or **delete**, stop and read carefully - you may be about to change something that already exists in the subscription.
 
 ### 4. Deploy
 
