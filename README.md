@@ -39,7 +39,7 @@ Open the terminal in Studio Code (**Terminal → New Terminal**) and run:
 ```
 mkdir C:\Projects
 cd C:\Projects
-git clone https://github.com/steveFBB/avd-bicep
+git clone https://github.com/steveFBB/avd-bicep.git
 cd avd-bicep
 ```
 
