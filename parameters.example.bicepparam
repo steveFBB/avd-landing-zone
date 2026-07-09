@@ -27,7 +27,7 @@ param location = 'westus'
 // -----------------------------------------------------------------------------
 
 param hubRgName = 'rg-hub'
-param mgmtRgName = 'rg-mmgmt'
+param mgmtRgName = 'rg-mgmt'
 param avdRgName = 'rg-avd'
 param prodRgName = 'rg-prod'
 param storageRgName = 'rg-storage'
