@@ -138,3 +138,18 @@ param storagePublicNetworkAccess = 'Enabled'
 
 // Required if quota > 5 TiB. Harmless if not. Recommended 'Enabled'.
 param storageLargeFileSharesState = 'Enabled'
+
+// -----------------------------------------------------------------------------
+// LOG ANALYTICS (chunk 2)
+// -----------------------------------------------------------------------------
+
+// Workspace lives in the mgmt RG alongside the mgmt VNet.
+param logAnalyticsWorkspaceName = 'law-avd'
+
+// Data retention in days. Azure default is 30. Valid range 30–730.
+// Common choices: 30 (default), 90 (compliance), 180+ (long-term audit).
+param logAnalyticsRetentionDays = 30
+
+// Workspace SKU. PerGB2018 is the modern pay-as-you-go SKU — recommended
+// for all new workspaces. Older SKUs exist for legacy reasons only.
+param logAnalyticsSku = 'PerGB2018'

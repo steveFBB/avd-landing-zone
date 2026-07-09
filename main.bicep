@@ -82,6 +82,13 @@ param storagePublicNetworkAccess string
 param storageLargeFileSharesState string
 
 //
+// LOG ANALYTICS (chunk 2)
+//
+param logAnalyticsWorkspaceName string
+param logAnalyticsRetentionDays int
+param logAnalyticsSku string
+
+//
 // RESOURCE GROUPS
 //
 module resourceGroups 'modules/resourceGroups.bicep' = {
@@ -271,6 +278,80 @@ module fslogix 'modules/fslogixStorage.bicep' = {
 }
 
 //
+// LOG ANALYTICS (chunk 2)
+//
+module logAnalytics 'modules/logAnalytics.bicep' = {
+  name: 'logAnalytics'
+  scope: resourceGroup(mgmtRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    workspaceName: logAnalyticsWorkspaceName
+    retentionInDays: logAnalyticsRetentionDays
+    sku: logAnalyticsSku
+  }
+}
+
+//
+// DIAGNOSTIC SETTINGS (chunk 2)
+//
+module hubVnetDiag 'modules/vnetDiagnostics.bicep' = {
+  name: 'hubVnetDiag'
+  scope: resourceGroup(hubRgName)
+  dependsOn: [hubVnet]
+  params: {
+    vnetName: hubVnetName
+    workspaceId: logAnalytics.outputs.workspaceId
+    diagnosticSettingName: 'diag-to-law'
+  }
+}
+
+module prodVnetDiag 'modules/vnetDiagnostics.bicep' = {
+  name: 'prodVnetDiag'
+  scope: resourceGroup(prodRgName)
+  dependsOn: [prodVnet]
+  params: {
+    vnetName: prodVnetName
+    workspaceId: logAnalytics.outputs.workspaceId
+    diagnosticSettingName: 'diag-to-law'
+  }
+}
+
+module mgmtVnetDiag 'modules/vnetDiagnostics.bicep' = {
+  name: 'mgmtVnetDiag'
+  scope: resourceGroup(mgmtRgName)
+  dependsOn: [mgmtVnet]
+  params: {
+    vnetName: mgmtVnetName
+    workspaceId: logAnalytics.outputs.workspaceId
+    diagnosticSettingName: 'diag-to-law'
+  }
+}
+
+module avdVnetDiag 'modules/vnetDiagnostics.bicep' = {
+  name: 'avdVnetDiag'
+  scope: resourceGroup(avdRgName)
+  dependsOn: [avdVnet]
+  params: {
+    vnetName: avdVnetName
+    workspaceId: logAnalytics.outputs.workspaceId
+    diagnosticSettingName: 'diag-to-law'
+  }
+}
+
+module fslogixDiag 'modules/storageDiagnostics.bicep' = {
+  name: 'fslogixDiag'
+  scope: resourceGroup(storageRgName)
+  dependsOn: [fslogix]
+  params: {
+    storageAccountName: storageAccountName
+    workspaceId: logAnalytics.outputs.workspaceId
+    accountDiagnosticSettingName: 'diag-to-law'
+    fileServiceDiagnosticSettingName: 'diag-to-law'
+  }
+}
+
+//
 // OUTPUTS
 //
 output hubVnetId string = hubVnet.outputs.vnetId
@@ -278,3 +359,4 @@ output prodVnetId string = prodVnet.outputs.vnetId
 output mgmtVnetId string = mgmtVnet.outputs.vnetId
 output avdVnetId string = avdVnet.outputs.vnetId
 output storageAccountId string = fslogix.outputs.storageAccountId
+output logAnalyticsWorkspaceId string = logAnalytics.outputs.workspaceId
