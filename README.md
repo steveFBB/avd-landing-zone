@@ -57,9 +57,9 @@ This is a **greenfield reference deployment** optimised for hub-and-spoke topolo
 
 The following are handled per customer, outside this template:
 
-- **Session hosts.** VM specs, image (Marketplace / Compute Gallery / Azure Image Builder), join type (Entra ID / Active Directory), and FSLogix client configuration all vary by customer. Session hosts should register with the host pool using a registration token — see [After deployment](#after-deployment) below.
+- **Session hosts.** VM specs, image (Marketplace / Compute Gallery / Azure Image Builder), join type (Entra ID / Active Directory), and FSLogix client configuration all vary by customer. Session hosts should register with the host pool using a registration token - see [After deployment](#after-deployment) below.
 - **Admin access.** Bastion, jump boxes, or existing VPN / ExpressRoute connectivity.
-- **Backup.** Recovery Services Vault, backup policies, and protected items — configured once real workloads exist.
+- **Backup.** Recovery Services Vault, backup policies, and protected items - configured once real workloads exist.
 - **Azure Files identity-based authentication.** See [FSLogix share readiness](#fslogix-share-readiness) below.
 
 ## Known limitations
@@ -76,9 +76,9 @@ The following are handled per customer, outside this template:
 
 ## Structure
 
-- `main.bicep` — subscription-scoped entry point
-- `parameters.example.bicepparam` — example parameters; copy and edit per customer
-- `modules/` — per-resource modules
+- `main.bicep` - subscription-scoped entry point
+- `parameters.example.bicepparam` - example parameters; copy and edit per customer
+- `modules/` - per-resource modules
 
 ## Prerequisites
 
@@ -103,8 +103,8 @@ cd avd-bicep
 
 ### Recommended extensions
 
-- **Bicep** (publisher: Microsoft) — syntax highlighting and inline validation for `.bicep` files
-- **Azure CLI Tools** (optional) — helpful for running `az` commands
+- **Bicep** (publisher: Microsoft) - syntax highlighting and inline validation for `.bicep` files
+- **Azure CLI Tools** (optional) - helpful for running `az` commands
 
 ## Running the deployment
 
@@ -120,18 +120,18 @@ copy parameters.example.bicepparam parameters.<customer>.bicepparam
 
 Open the new file and set at minimum:
 
-- `location` — Azure region (e.g. `westus`, `uksouth`)
-- `storageAccountName` — globally unique, lowercase letters and digits, 3–24 chars
-- `logAnalyticsWorkspaceName` — must be unique within the resource group
-- `hubHasFirewall` — `true` if a firewall NVA exists in the hub VNet, otherwise `false`
-- `hubFirewallInternalIp` — required when `hubHasFirewall = true`; the firewall's internal NIC IP
-- `fslogixPrivateEndpointName` — private endpoint name for the FSLogix storage account
-- `avdUsersGroupObjectId` — Entra ID group object ID for AVD users (optional; empty skips the role assignment)
-- `avdAdminsGroupObjectId` — Entra ID group object ID for AVD admins (optional; empty skips the role assignment)
-- `hostPoolName`, `workspaceName`, `applicationGroupName` — internal resource names
-- `hostPoolFriendlyName`, `workspaceFriendlyName`, `applicationGroupFriendlyName` — what end users see in the AVD client
-- `maxSessionLimit` — max concurrent sessions per session host (depends on VM size — typically 6–20)
-- `startVMOnConnect` — power on hosts when a user connects; requires additional RBAC on the AVD service principal
+- `location` - Azure region (e.g. `westus`, `uksouth`)
+- `storageAccountName` - globally unique, lowercase letters and digits, 3–24 chars
+- `logAnalyticsWorkspaceName` - must be unique within the resource group
+- `hubHasFirewall` - `true` if a firewall NVA exists in the hub VNet, otherwise `false`
+- `hubFirewallInternalIp` - required when `hubHasFirewall = true`; the firewall's internal NIC IP
+- `fslogixPrivateEndpointName` - private endpoint name for the FSLogix storage account
+- `avdUsersGroupObjectId` - Entra ID group object ID for AVD users (optional; empty skips the role assignment)
+- `avdAdminsGroupObjectId` - Entra ID group object ID for AVD admins (optional; empty skips the role assignment)
+- `hostPoolName`, `workspaceName`, `applicationGroupName` - internal resource names
+- `hostPoolFriendlyName`, `workspaceFriendlyName`, `applicationGroupFriendlyName` - what end users see in the AVD client
+- `maxSessionLimit` - max concurrent sessions per session host (depends on VM size - typically 6–20)
+- `startVMOnConnect` - power on hosts when a user connects; requires additional RBAC on the AVD service principal
 - All resource group names, VNet names, and IP ranges appropriate to the customer
 
 ### 2. Log in to Azure
@@ -152,7 +152,7 @@ Always run this before deploying. It shows exactly what would change without mak
 az deployment sub what-if --location <region> --template-file main.bicep --parameters parameters.<customer>.bicepparam
 ```
 
-If you see resources marked as **modify** or **delete**, stop and read carefully — you may be about to change something that already exists in the subscription.
+If you see resources marked as **modify** or **delete**, stop and read carefully - you may be about to change something that already exists in the subscription.
 
 ### 4. Deploy
 
@@ -192,11 +192,11 @@ The template creates the storage account, file share, private endpoint, DNS, and
 
 Choose one of:
 
-- **AD DS Kerberos** — storage account joined to on-premises Active Directory. For hybrid environments.
-- **Microsoft Entra Kerberos** — for Entra-joined session hosts.
-- **Microsoft Entra Domain Services** — for environments using Entra Domain Services.
+- **AD DS Kerberos** - storage account joined to on-premises Active Directory. For hybrid environments.
+- **Microsoft Entra Kerberos** - for Entra-joined session hosts.
+- **Microsoft Entra Domain Services** - for environments using Entra Domain Services.
 
-Configure per Microsoft's Azure Files identity guidance. The Azure RBAC assignments created by this template (SMB Share Contributor / Elevated Contributor) control who can access the share, but not what NTFS permissions the files carry — that's a separate step.
+Configure per Microsoft's Azure Files identity guidance. The Azure RBAC assignments created by this template (SMB Share Contributor / Elevated Contributor) control who can access the share, but not what NTFS permissions the files carry - that's a separate step.
 
 After enabling identity-based auth, mount the share from a domain-joined client and set NTFS permissions on the share root using `icacls`. Microsoft publishes the recommended NTFS permission set for FSLogix profile containers.
 
@@ -246,7 +246,7 @@ az role assignment create \
 
 ### 5. Configure admin access
 
-Bastion, jump box, VPN, ExpressRoute — customer's choice.
+Bastion, jump box, VPN, ExpressRoute - customer's choice.
 
 ### 6. Configure backup
 
@@ -266,4 +266,4 @@ az group delete --name rg-storage --yes --no-wait
 
 Adjust the resource group names to match your parameters file if you changed them.
 
-Note: storage account names remain globally reserved for a period after deletion. Log Analytics workspaces are soft-deleted for 14 days by default before permanent removal. Private DNS zones cannot be deleted while VNet links exist — deletion of the storage resource group handles this automatically.
+Note: storage account names remain globally reserved for a period after deletion. Log Analytics workspaces are soft-deleted for 14 days by default before permanent removal. Private DNS zones cannot be deleted while VNet links exist - deletion of the storage resource group handles this automatically.
