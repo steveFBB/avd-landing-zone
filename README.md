@@ -1,14 +1,21 @@
 # AVD Bicep
 
-Infrastructure-as-code for deploying Azure Virtual Desktop environments.
+Infrastructure-as-code for deploying Azure Virtual Desktop landing zones.
 
-Deploys 5 resource groups, 4 VNets with subnets and peerings, an FSLogix storage account, a Log Analytics workspace, and diagnostic settings on the networking and storage resources.
+Deploys:
+
+- 5 resource groups
+- Hub-and-spoke networking: 4 VNets (hub, prod, mgmt, avd) with subnets and full-mesh peerings
+- FSLogix storage account with SMB file share
+- Log Analytics workspace with diagnostic settings on VNets and storage
+- NSGs on all spoke subnets (AVD baseline rules on session hosts, placeholders elsewhere)
+- Optional route tables forcing spoke traffic through a hub firewall (when `hubHasFirewall = true`)
 
 ## Structure
 
-- `main.bicep` - subscription-scoped entry point
-- `parameters.example.bicepparam` - example parameters; copy and edit per customer
-- `modules/` - per-resource modules
+- `main.bicep` — subscription-scoped entry point
+- `parameters.example.bicepparam` — example parameters; copy and edit per customer
+- `modules/` — per-resource modules
 
 ## Status
 
@@ -16,14 +23,15 @@ Deploys 5 resource groups, 4 VNets with subnets and peerings, an FSLogix storage
 
 **Chunk 2 complete:** Log Analytics workspace and diagnostic settings on VNets and storage.
 
+**Chunk 3 complete:** NSGs on all spoke subnets with AVD baseline rules on the session host NSG; conditional route tables that forward traffic through a hub firewall when `hubHasFirewall = true`.
+
 ### Roadmap
 
-- Chunk 3 - NSGs and route tables
-- Chunk 4 - Private endpoint, private DNS, and storage RBAC
-- Chunk 5 - AVD control plane (host pool, workspace, application groups)
-- Chunk 6 - Session hosts
-- Chunk 7 - Bastion
-- Chunk 8 - Backup and alerts
+- Chunk 4 — Private endpoint, private DNS, and storage RBAC
+- Chunk 5 — AVD control plane (host pool, workspace, application groups)
+- Chunk 6 — Session hosts
+- Chunk 7 — Bastion
+- Chunk 8 — Backup and alerts
 
 ## Prerequisites
 
@@ -44,7 +52,7 @@ git clone https://github.com/steveFBB/avd-bicep.git
 cd avd-bicep
 ```
 
-If `C:\Projects` already exists, you'll get an error on the first line - ignore it and continue.
+If `C:\Projects` already exists, you'll get an error on the first line — ignore it and continue.
 
 ### Open the cloned repo in Studio Code
 
@@ -52,8 +60,8 @@ If `C:\Projects` already exists, you'll get an error on the first line - ignore 
 
 ### Recommended extensions
 
-- **Bicep** (publisher: Microsoft) - syntax highlighting and inline validation for `.bicep` files
-- **Azure CLI Tools** (optional) - helpful for running `az` commands
+- **Bicep** (publisher: Microsoft) — syntax highlighting and inline validation for `.bicep` files
+- **Azure CLI Tools** (optional) — helpful for running `az` commands
 
 ## Running the deployment
 
@@ -69,9 +77,11 @@ copy parameters.example.bicepparam parameters.<customer>.bicepparam
 
 Open the new file and set at minimum:
 
-- `location` - Azure region (e.g. `westus`, `uksouth`)
-- `storageAccountName` - globally unique, lowercase letters and digits, 3–24 chars
-- `logAnalyticsWorkspaceName` - must be unique within the resource group
+- `location` — Azure region (e.g. `westus`, `uksouth`)
+- `storageAccountName` — globally unique, lowercase letters and digits, 3–24 chars
+- `logAnalyticsWorkspaceName` — must be unique within the resource group
+- `hubHasFirewall` — `true` if a firewall NVA exists in the hub VNet, otherwise `false`
+- `hubFirewallInternalIp` — required when `hubHasFirewall = true`; the firewall's internal NIC IP
 - All resource group names, VNet names, and IP ranges appropriate to the customer
 
 ### 2. Log in to Azure
@@ -92,7 +102,7 @@ Always run this before deploying. It shows exactly what would change without mak
 az deployment sub what-if --location <region> --template-file main.bicep --parameters parameters.<customer>.bicepparam
 ```
 
-If you see resources marked as **modify** or **delete**, stop and read carefully - you may be about to change something that already exists in the subscription.
+If you see resources marked as **modify** or **delete**, stop and read carefully — you may be about to change something that already exists in the subscription.
 
 ### 4. Deploy
 
@@ -100,7 +110,7 @@ If you see resources marked as **modify** or **delete**, stop and read carefully
 az deployment sub create --location <region> --name "avd-foundation" --template-file main.bicep --parameters parameters.<customer>.bicepparam
 ```
 
-Deployment takes 3–5 minutes.
+Deployment takes 5–10 minutes.
 
 ### 5. Validate
 
@@ -111,6 +121,8 @@ Check in the Azure Portal:
 - FSLogix storage account has the `profiles` file share
 - Log Analytics workspace exists in the mgmt resource group
 - Each VNet and the storage account has a diagnostic setting pointing at the workspace
+- Each spoke subnet has an NSG attached
+- If `hubHasFirewall = true`: each spoke subnet also has a route table attached with routes pointing at the firewall internal IP
 
 ## Teardown
 
