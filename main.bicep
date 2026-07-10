@@ -51,10 +51,10 @@ param mgmtToHubPeeringName string
 param hubToAvdPeeringName string
 param avdToHubPeeringName string
 
-@description('Allow hub→spoke peerings to offer gateway transit. Set true when a VPN/ER gateway exists in the hub and spokes should use it.')
+@description('Allow hub→spoke peerings to offer gateway transit.')
 param peeringAllowGatewayTransitHubToSpoke bool = false
 
-@description('Have spoke→hub peerings use the hub\'s gateway. Set true only when a VPN/ER gateway exists in the hub.')
+@description('Have spoke→hub peerings use the hub\'s gateway.')
 param peeringUseRemoteGatewaysSpokeToHub bool = false
 
 //
@@ -84,10 +84,7 @@ param logAnalyticsSku string
 //
 // NETWORK SECURITY (chunk 3)
 //
-@description('True if a firewall (e.g. FortiGate) exists in the hub VNet. Drives creation of route tables on spoke subnets and enables forwarded-traffic on peerings.')
 param hubHasFirewall bool
-
-@description('Internal IP address of the hub firewall NVA. Required when hubHasFirewall = true; ignored otherwise.')
 param hubFirewallInternalIp string
 
 param nsgAvdHostsName string
@@ -101,7 +98,19 @@ param routeTableMgmtServersName string
 param routeTableMgmtAdminName string
 
 //
-// DERIVED — peering forwarded-traffic flags follow hubHasFirewall
+// PRIVATE ENDPOINT + DNS + RBAC (chunk 4)
+//
+@description('Name of the private endpoint for the FSLogix storage account.')
+param fslogixPrivateEndpointName string
+
+@description('Entra ID object ID of the AVD users group. Empty string skips the role assignment.')
+param avdUsersGroupObjectId string = ''
+
+@description('Entra ID object ID of the AVD admins group. Empty string skips the role assignment.')
+param avdAdminsGroupObjectId string = ''
+
+//
+// DERIVED
 //
 var peeringAllowForwardedTrafficHubToSpoke = hubHasFirewall
 var peeringAllowForwardedTrafficSpokeToHub = hubHasFirewall
@@ -122,7 +131,7 @@ module resourceGroups 'modules/resourceGroups.bicep' = {
 }
 
 //
-// NSGS (chunk 3) — deploy BEFORE VNets so subnets can reference them
+// NSGS (chunk 3)
 //
 module nsgAvdHosts 'modules/nsgAvdHosts.bicep' = {
   name: 'nsgAvdHosts'
@@ -165,7 +174,7 @@ module nsgMgmtAdmin 'modules/nsgPlaceholder.bicep' = {
 }
 
 //
-// ROUTE TABLES (chunk 3) — conditional; deploy BEFORE VNets
+// ROUTE TABLES (chunk 3) — conditional
 //
 module rtAvdHosts 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
   name: 'rtAvdHosts'
@@ -212,7 +221,7 @@ module rtMgmtAdmin 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
 }
 
 //
-// VNETS — receive NSG and (optional) route table IDs directly
+// VNETS
 //
 module hubVnet 'modules/hubVnet.bicep' = {
   name: 'hubVnet'
@@ -463,6 +472,82 @@ module fslogixDiag 'modules/storageDiagnostics.bicep' = {
 }
 
 //
+// PRIVATE DNS ZONE + LINKS (chunk 4)
+//
+// The zone lives in the storage RG. It's linked to the AVD VNet (session
+// hosts must resolve it), the hub VNet (for future on-prem connectivity
+// via VPN/ER), and the mgmt VNet (for admin jump boxes).
+module privateDnsZoneFiles 'modules/privateDnsZoneFiles.bicep' = {
+  name: 'privateDnsZoneFiles'
+  scope: resourceGroup(storageRgName)
+  dependsOn: [resourceGroups]
+}
+
+module dnsLinkAvd 'modules/privateDnsZoneVnetLink.bicep' = {
+  name: 'dnsLinkAvd'
+  scope: resourceGroup(storageRgName)
+  params: {
+    zoneName: privateDnsZoneFiles.outputs.zoneName
+    linkName: 'link-vnet-avd'
+    vnetId: avdVnet.outputs.vnetId
+  }
+}
+
+module dnsLinkHub 'modules/privateDnsZoneVnetLink.bicep' = {
+  name: 'dnsLinkHub'
+  scope: resourceGroup(storageRgName)
+  params: {
+    zoneName: privateDnsZoneFiles.outputs.zoneName
+    linkName: 'link-vnet-hub'
+    vnetId: hubVnet.outputs.vnetId
+  }
+}
+
+module dnsLinkMgmt 'modules/privateDnsZoneVnetLink.bicep' = {
+  name: 'dnsLinkMgmt'
+  scope: resourceGroup(storageRgName)
+  params: {
+    zoneName: privateDnsZoneFiles.outputs.zoneName
+    linkName: 'link-vnet-mgmt'
+    vnetId: mgmtVnet.outputs.vnetId
+  }
+}
+
+//
+// PRIVATE ENDPOINT (chunk 4)
+//
+// Lives in the storage RG (where the storage account is) but the PE's NIC
+// consumes an IP from the AVD session host subnet.
+module fslogixPrivateEndpoint 'modules/fslogixPrivateEndpoint.bicep' = {
+  name: 'fslogixPrivateEndpoint'
+  scope: resourceGroup(storageRgName)
+  params: {
+    location: location
+    privateEndpointName: fslogixPrivateEndpointName
+    subnetId: avdVnet.outputs.sessionHostSubnetId
+    storageAccountId: fslogix.outputs.storageAccountId
+    privateDnsZoneId: privateDnsZoneFiles.outputs.zoneId
+  }
+}
+
+//
+// FSLOGIX RBAC (chunk 4)
+//
+// Grants the AVD user and admin groups access to the file share. Both
+// group IDs are optional — assignments are skipped when empty.
+module fslogixRbac 'modules/fslogixRbac.bicep' = {
+  name: 'fslogixRbac'
+  scope: resourceGroup(storageRgName)
+  dependsOn: [fslogix]
+  params: {
+    storageAccountName: storageAccountName
+    fileShareName: fslogixShareName
+    avdUsersGroupObjectId: avdUsersGroupObjectId
+    avdAdminsGroupObjectId: avdAdminsGroupObjectId
+  }
+}
+
+//
 // OUTPUTS
 //
 output hubVnetId string = hubVnet.outputs.vnetId
@@ -471,3 +556,4 @@ output mgmtVnetId string = mgmtVnet.outputs.vnetId
 output avdVnetId string = avdVnet.outputs.vnetId
 output storageAccountId string = fslogix.outputs.storageAccountId
 output logAnalyticsWorkspaceId string = logAnalytics.outputs.workspaceId
+output privateDnsZoneId string = privateDnsZoneFiles.outputs.zoneId

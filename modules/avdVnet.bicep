@@ -1,10 +1,10 @@
 // AVD VNet
 // Contains: session host subnet
 //
-// Note: an "apps" subnet was previously defined here for private endpoints
-// and other AVD-adjacent services. It was removed because no resource in
-// the template used it. The AVD VNet address space stays wide (10.3.0.0/16)
-// so a dedicated subnet can be added later without touching the VNet.
+// The session host subnet has privateEndpointNetworkPolicies set to
+// 'Disabled' — historically Azure required this for private endpoints to
+// deploy into a subnet. Microsoft has relaxed this restriction but the
+// setting is kept explicit here as belt-and-braces and self-documenting.
 
 param location string
 param vnetName string
@@ -34,6 +34,7 @@ resource snetSessionHosts 'Microsoft.Network/virtualNetworks/subnets@2024-01-01'
   name: 'snet-avd-hosts'
   properties: {
     addressPrefix: avdSessionHostSubnet
+    privateEndpointNetworkPolicies: 'Disabled'
     networkSecurityGroup: empty(avdSessionHostNsgId) ? null : {
       id: avdSessionHostNsgId
     }
@@ -45,3 +46,4 @@ resource snetSessionHosts 'Microsoft.Network/virtualNetworks/subnets@2024-01-01'
 
 output vnetId string = vnet.id
 output vnetName string = vnet.name
+output sessionHostSubnetId string = snetSessionHosts.id
