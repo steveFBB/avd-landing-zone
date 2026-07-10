@@ -6,19 +6,18 @@ Deploys:
 
 - 5 resource groups
 - Hub-and-spoke networking: 4 VNets (hub, prod, mgmt, avd) with subnets and full-mesh peerings
-- FSLogix storage account with SMB file share
+- FSLogix storage account with SMB file share, private endpoint in the session host subnet, and private DNS zone linked to AVD, hub, and mgmt VNets
+- Optional RBAC role assignments on the file share for AVD user and admin groups
 - Log Analytics workspace with diagnostic settings on VNets and storage
 - NSGs on all spoke subnets (AVD baseline rules on session hosts, placeholders elsewhere)
 - Optional route tables forcing spoke traffic through a hub firewall (when `hubHasFirewall = true`)
-- Private DNS zone for Azure Files, linked to AVD, hub, and mgmt VNets
-- Private endpoint for the FSLogix file share in the session host subnet, with automatic DNS registration
-- Optional RBAC role assignments on the file share for AVD user and admin groups
+- AVD control plane: pooled host pool (depth-first), Desktop application group, and workspace
 
 ## Structure
 
-- `main.bicep` - subscription-scoped entry point
-- `parameters.example.bicepparam` - example parameters; copy and edit per customer
-- `modules/` - per-resource modules
+- `main.bicep` — subscription-scoped entry point
+- `parameters.example.bicepparam` — example parameters; copy and edit per customer
+- `modules/` — per-resource modules
 
 ## Status
 
@@ -30,12 +29,13 @@ Deploys:
 
 **Chunk 4 complete:** private endpoint for the FSLogix file share, private DNS zone linked to AVD/hub/mgmt VNets, and optional RBAC role assignments on the file share.
 
+**Chunk 5 complete:** AVD control plane — pooled host pool with depth-first load balancing, Desktop application group, and workspace.
+
 ### Roadmap
 
-- Chunk 5 - AVD control plane (host pool, workspace, application groups)
-- Chunk 6 - Session hosts
-- Chunk 7 - Bastion
-- Chunk 8 - Backup and alerts
+- Chunk 6 — Session hosts
+- Chunk 7 — Bastion
+- Chunk 8 — Backup and alerts
 
 ## Prerequisites
 
@@ -56,7 +56,7 @@ git clone https://github.com/steveFBB/avd-bicep.git
 cd avd-bicep
 ```
 
-If `C:\Projects` already exists, you'll get an error on the first line - ignore it and continue.
+If `C:\Projects` already exists, you'll get an error on the first line — ignore it and continue.
 
 ### Open the cloned repo in Studio Code
 
@@ -64,8 +64,8 @@ If `C:\Projects` already exists, you'll get an error on the first line - ignore 
 
 ### Recommended extensions
 
-- **Bicep** (publisher: Microsoft) - syntax highlighting and inline validation for `.bicep` files
-- **Azure CLI Tools** (optional) - helpful for running `az` commands
+- **Bicep** (publisher: Microsoft) — syntax highlighting and inline validation for `.bicep` files
+- **Azure CLI Tools** (optional) — helpful for running `az` commands
 
 ## Running the deployment
 
@@ -81,14 +81,18 @@ copy parameters.example.bicepparam parameters.<customer>.bicepparam
 
 Open the new file and set at minimum:
 
-- `location` - Azure region (e.g. `westus`, `uksouth`)
-- `storageAccountName` - globally unique, lowercase letters and digits, 3–24 chars
-- `logAnalyticsWorkspaceName` - must be unique within the resource group
-- `hubHasFirewall` - `true` if a firewall NVA exists in the hub VNet, otherwise `false`
-- `hubFirewallInternalIp` - required when `hubHasFirewall = true`; the firewall's internal NIC IP
-- `fslogixPrivateEndpointName` - private endpoint name for the FSLogix storage account
-- `avdUsersGroupObjectId` - Entra ID group object ID for AVD users (optional; empty skips the role assignment)
-- `avdAdminsGroupObjectId` - Entra ID group object ID for AVD admins (optional; empty skips the role assignment)
+- `location` — Azure region (e.g. `westus`, `uksouth`)
+- `storageAccountName` — globally unique, lowercase letters and digits, 3–24 chars
+- `logAnalyticsWorkspaceName` — must be unique within the resource group
+- `hubHasFirewall` — `true` if a firewall NVA exists in the hub VNet, otherwise `false`
+- `hubFirewallInternalIp` — required when `hubHasFirewall = true`; the firewall's internal NIC IP
+- `fslogixPrivateEndpointName` — private endpoint name for the FSLogix storage account
+- `avdUsersGroupObjectId` — Entra ID group object ID for AVD users (optional; empty skips the role assignment)
+- `avdAdminsGroupObjectId` — Entra ID group object ID for AVD admins (optional; empty skips the role assignment)
+- `hostPoolName`, `workspaceName`, `applicationGroupName` — internal resource names
+- `hostPoolFriendlyName`, `workspaceFriendlyName`, `applicationGroupFriendlyName` — what end users see in the AVD client
+- `maxSessionLimit` — max concurrent sessions per session host (depends on VM size — typically 6–20)
+- `startVMOnConnect` — power on hosts when a user connects; requires additional RBAC on the AVD service principal
 - All resource group names, VNet names, and IP ranges appropriate to the customer
 
 ### 2. Log in to Azure
@@ -109,7 +113,7 @@ Always run this before deploying. It shows exactly what would change without mak
 az deployment sub what-if --location <region> --template-file main.bicep --parameters parameters.<customer>.bicepparam
 ```
 
-If you see resources marked as **modify** or **delete**, stop and read carefully - you may be about to change something that already exists in the subscription.
+If you see resources marked as **modify** or **delete**, stop and read carefully — you may be about to change something that already exists in the subscription.
 
 ### 4. Deploy
 
@@ -132,10 +136,16 @@ Check in the Azure Portal:
 - If `hubHasFirewall = true`: each spoke subnet also has a route table attached with routes pointing at the firewall internal IP
 - Private DNS zone `privatelink.file.core.windows.net` exists with links to AVD, hub, and mgmt VNets
 - Private endpoint exists for the FSLogix storage account and has an A record in the private DNS zone
+- AVD host pool, application group, and workspace exist in the AVD resource group
+- The workspace shows the application group under Application groups
 
 ### 6. Lock down public access to the storage account
 
 Once validated that clients can reach the file share via the private endpoint, run a follow-up deployment with `storagePublicNetworkAccess` changed to `'Disabled'` in your parameters file. This closes off public internet access to the storage account and forces all clients through the private endpoint.
+
+### 7. (Optional) Grant Power On rights to the AVD service principal
+
+If `startVMOnConnect = true`, the Windows Virtual Desktop service principal needs the "Desktop Virtualization Power On Contributor" role on the subscription where session hosts live. This is a one-time step per subscription, done outside this template.
 
 ## Teardown
 
@@ -151,4 +161,4 @@ az group delete --name rg-storage --yes --no-wait
 
 Adjust the resource group names to match your parameters file if you changed them.
 
-Note: storage account names remain globally reserved for a period after deletion. Log Analytics workspaces are soft-deleted for 14 days by default before permanent removal. Private DNS zones cannot be deleted while VNet links exist - deletion of the storage resource group handles this automatically.
+Note: storage account names remain globally reserved for a period after deletion. Log Analytics workspaces are soft-deleted for 14 days by default before permanent removal. Private DNS zones cannot be deleted while VNet links exist — deletion of the storage resource group handles this automatically.
