@@ -1,6 +1,8 @@
 # AVD Bicep
 
-Infrastructure-as-code for deploying Azure Virtual Desktop landing zones.
+Infrastructure-as-code for deploying an Azure Virtual Desktop landing zone.
+
+Deploys the network, storage, and control plane needed to host AVD session hosts. Session host provisioning, admin access (Bastion / jump boxes / VPN), and backup are deliberately out of scope — those are per-customer decisions handled separately.
 
 Deploys:
 
@@ -13,29 +15,19 @@ Deploys:
 - Optional route tables forcing spoke traffic through a hub firewall (when `hubHasFirewall = true`)
 - AVD control plane: pooled host pool (depth-first), Desktop application group, and workspace
 
+## Out of scope
+
+The following are intentionally not included and should be delivered per customer:
+
+- **Session hosts.** VM specs, image (Marketplace / Compute Gallery / Azure Image Builder), join type (Entra ID / Active Directory), and FSLogix client configuration all vary by customer. Session hosts should register with the host pool using the registration token surfaced by the deployment output.
+- **Admin access.** Bastion, jump boxes, or existing VPN / ExpressRoute connectivity — customer's choice.
+- **Backup.** Recovery Services Vault, backup policies, and protected items should be configured once real workloads exist.
+
 ## Structure
 
 - `main.bicep` — subscription-scoped entry point
 - `parameters.example.bicepparam` — example parameters; copy and edit per customer
 - `modules/` — per-resource modules
-
-## Status
-
-**Chunk 1 complete:** foundation networking (4 VNets, subnets, peerings) and FSLogix storage account.
-
-**Chunk 2 complete:** Log Analytics workspace and diagnostic settings on VNets and storage.
-
-**Chunk 3 complete:** NSGs on all spoke subnets with AVD baseline rules on the session host NSG; conditional route tables that forward traffic through a hub firewall when `hubHasFirewall = true`.
-
-**Chunk 4 complete:** private endpoint for the FSLogix file share, private DNS zone linked to AVD/hub/mgmt VNets, and optional RBAC role assignments on the file share.
-
-**Chunk 5 complete:** AVD control plane — pooled host pool with depth-first load balancing, Desktop application group, and workspace.
-
-### Roadmap
-
-- Chunk 6 — Session hosts
-- Chunk 7 — Bastion
-- Chunk 8 — Backup and alerts
 
 ## Prerequisites
 
@@ -146,6 +138,15 @@ Once validated that clients can reach the file share via the private endpoint, r
 ### 7. (Optional) Grant Power On rights to the AVD service principal
 
 If `startVMOnConnect = true`, the Windows Virtual Desktop service principal needs the "Desktop Virtualization Power On Contributor" role on the subscription where session hosts live. This is a one-time step per subscription, done outside this template.
+
+## What to do next
+
+The landing zone is complete but empty. To turn it into a working AVD environment:
+
+1. **Deploy session hosts** into `snet-avd-hosts`, joined per customer requirements (Entra ID or Active Directory), with the AVD agent and boot loader extensions registering them against the host pool. Use the registration token from the deployment output.
+2. **Assign users** to the application group so they can see the desktop in the AVD client.
+3. **Configure admin access** (Bastion, jump box, VPN, etc.).
+4. **Configure backup** for the FSLogix storage account and session host disks once workloads are in place.
 
 ## Teardown
 
