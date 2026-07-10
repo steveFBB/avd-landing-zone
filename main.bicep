@@ -52,12 +52,6 @@ param mgmtToHubPeeringName string
 param hubToAvdPeeringName string
 param avdToHubPeeringName string
 
-@description('Allow forwarded traffic on hub→spoke peerings. Set true when an NVA (e.g. FortiGate) in the hub forwards traffic to spokes.')
-param peeringAllowForwardedTrafficHubToSpoke bool = false
-
-@description('Allow forwarded traffic on spoke→hub peerings.')
-param peeringAllowForwardedTrafficSpokeToHub bool = false
-
 @description('Allow hub→spoke peerings to offer gateway transit. Set true when a VPN/ER gateway exists in the hub and spokes should use it.')
 param peeringAllowGatewayTransitHubToSpoke bool = false
 
@@ -89,6 +83,33 @@ param logAnalyticsRetentionDays int
 param logAnalyticsSku string
 
 //
+// NETWORK SECURITY (chunk 3)
+//
+@description('True if a firewall (e.g. FortiGate) exists in the hub VNet. Drives creation of route tables on spoke subnets and enables forwarded-traffic on peerings.')
+param hubHasFirewall bool
+
+@description('Internal IP address of the hub firewall NVA. Required when hubHasFirewall = true; ignored otherwise.')
+param hubFirewallInternalIp string
+
+param nsgAvdHostsName string
+param nsgAvdAppsName string
+param nsgProdServersName string
+param nsgMgmtServersName string
+param nsgMgmtAdminName string
+
+param routeTableAvdHostsName string
+param routeTableAvdAppsName string
+param routeTableProdServersName string
+param routeTableMgmtServersName string
+param routeTableMgmtAdminName string
+
+//
+// DERIVED — peering forwarded-traffic flags follow hubHasFirewall
+//
+var peeringAllowForwardedTrafficHubToSpoke = hubHasFirewall
+var peeringAllowForwardedTrafficSpokeToHub = hubHasFirewall
+
+//
 // RESOURCE GROUPS
 //
 module resourceGroups 'modules/resourceGroups.bicep' = {
@@ -104,12 +125,126 @@ module resourceGroups 'modules/resourceGroups.bicep' = {
 }
 
 //
-// VNETS
+// NSGS (chunk 3) — deploy BEFORE VNets so subnets can reference them
+//
+module nsgAvdHosts 'modules/nsgAvdHosts.bicep' = {
+  name: 'nsgAvdHosts'
+  scope: resourceGroup(avdRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    nsgName: nsgAvdHostsName
+  }
+}
+
+module nsgAvdApps 'modules/nsgPlaceholder.bicep' = {
+  name: 'nsgAvdApps'
+  scope: resourceGroup(avdRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    nsgName: nsgAvdAppsName
+  }
+}
+
+module nsgProdServers 'modules/nsgPlaceholder.bicep' = {
+  name: 'nsgProdServers'
+  scope: resourceGroup(prodRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    nsgName: nsgProdServersName
+  }
+}
+
+module nsgMgmtServers 'modules/nsgPlaceholder.bicep' = {
+  name: 'nsgMgmtServers'
+  scope: resourceGroup(mgmtRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    nsgName: nsgMgmtServersName
+  }
+}
+
+module nsgMgmtAdmin 'modules/nsgPlaceholder.bicep' = {
+  name: 'nsgMgmtAdmin'
+  scope: resourceGroup(mgmtRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    nsgName: nsgMgmtAdminName
+  }
+}
+
+//
+// ROUTE TABLES (chunk 3) — conditional; deploy BEFORE VNets
+//
+module rtAvdHosts 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
+  name: 'rtAvdHosts'
+  scope: resourceGroup(avdRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    routeTableName: routeTableAvdHostsName
+    firewallInternalIp: hubFirewallInternalIp
+  }
+}
+
+module rtAvdApps 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
+  name: 'rtAvdApps'
+  scope: resourceGroup(avdRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    routeTableName: routeTableAvdAppsName
+    firewallInternalIp: hubFirewallInternalIp
+  }
+}
+
+module rtProdServers 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
+  name: 'rtProdServers'
+  scope: resourceGroup(prodRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    routeTableName: routeTableProdServersName
+    firewallInternalIp: hubFirewallInternalIp
+  }
+}
+
+module rtMgmtServers 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
+  name: 'rtMgmtServers'
+  scope: resourceGroup(mgmtRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    routeTableName: routeTableMgmtServersName
+    firewallInternalIp: hubFirewallInternalIp
+  }
+}
+
+module rtMgmtAdmin 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
+  name: 'rtMgmtAdmin'
+  scope: resourceGroup(mgmtRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    routeTableName: routeTableMgmtAdminName
+    firewallInternalIp: hubFirewallInternalIp
+  }
+}
+
+//
+// VNETS — receive NSG and (optional) route table IDs directly
+//
+// The hub VNet does NOT get NSGs on its subnets:
+//  - GatewaySubnet: Microsoft says do not attach an NSG
+//  - FortiGate NIC subnets: FGT manages these itself
 //
 module hubVnet 'modules/hubVnet.bicep' = {
   name: 'hubVnet'
   scope: resourceGroup(hubRgName)
-  dependsOn: [resourceGroups]
   params: {
     location: location
     vnetName: hubVnetName
@@ -125,38 +260,45 @@ module hubVnet 'modules/hubVnet.bicep' = {
 module prodVnet 'modules/prodVnet.bicep' = {
   name: 'prodVnet'
   scope: resourceGroup(prodRgName)
-  dependsOn: [resourceGroups]
   params: {
     location: location
     vnetName: prodVnetName
     addressPrefix: prodAddressPrefix
     prodServerSubnet: prodServerSubnet
+    prodServerNsgId: nsgProdServers.outputs.nsgId
+    prodServerRouteTableId: hubHasFirewall ? rtProdServers!.outputs.routeTableId : ''
   }
 }
 
 module mgmtVnet 'modules/mgmtVnet.bicep' = {
   name: 'mgmtVnet'
   scope: resourceGroup(mgmtRgName)
-  dependsOn: [resourceGroups]
   params: {
     location: location
     vnetName: mgmtVnetName
     addressPrefix: mgmtAddressPrefix
     mgmtServersSubnet: mgmtServersSubnet
     mgmtAdminSubnet: mgmtAdminSubnet
+    mgmtServersNsgId: nsgMgmtServers.outputs.nsgId
+    mgmtServersRouteTableId: hubHasFirewall ? rtMgmtServers!.outputs.routeTableId : ''
+    mgmtAdminNsgId: nsgMgmtAdmin.outputs.nsgId
+    mgmtAdminRouteTableId: hubHasFirewall ? rtMgmtAdmin!.outputs.routeTableId : ''
   }
 }
 
 module avdVnet 'modules/avdVnet.bicep' = {
   name: 'avdVnet'
   scope: resourceGroup(avdRgName)
-  dependsOn: [resourceGroups]
   params: {
     location: location
     vnetName: avdVnetName
     addressPrefix: avdAddressPrefix
     avdSessionHostSubnet: avdSessionHostSubnet
     avdAppsSubnet: avdAppsSubnet
+    avdSessionHostNsgId: nsgAvdHosts.outputs.nsgId
+    avdSessionHostRouteTableId: hubHasFirewall ? rtAvdHosts!.outputs.routeTableId : ''
+    avdAppsNsgId: nsgAvdApps.outputs.nsgId
+    avdAppsRouteTableId: hubHasFirewall ? rtAvdApps!.outputs.routeTableId : ''
   }
 }
 
