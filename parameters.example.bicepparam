@@ -82,10 +82,8 @@ param storageAllowBlobPublicAccess = false
 param storageAllowSharedKeyAccess = true
 
 // IMPORTANT: leave 'Enabled' for the initial deployment INCLUDING chunk 4.
-// The private endpoint deploys with the account still publicly reachable.
 // Flip to 'Disabled' in a follow-up deployment AFTER validating that the
-// private endpoint resolves correctly and clients can mount the share via
-// the private path. Otherwise all clients — including you — lose access.
+// private endpoint resolves correctly and clients can mount the share.
 param storagePublicNetworkAccess = 'Enabled'
 
 param storageLargeFileSharesState = 'Enabled'
@@ -119,18 +117,33 @@ param routeTableMgmtAdminName = 'rt-mgmt-admin'
 // PRIVATE ENDPOINT + RBAC (chunk 4)
 // -----------------------------------------------------------------------------
 
-// Name of the private endpoint for the FSLogix storage account.
-// Convention: pe-<storageAccountName>-file
 param fslogixPrivateEndpointName = 'pe-fslogixstorageacct001-file'
 
-// Entra ID object IDs of the groups that get access to the FSLogix share.
-//   avdUsersGroupObjectId  — gets Storage File Data SMB Share Contributor
-//                             (read/write access to profiles)
-//   avdAdminsGroupObjectId — gets Storage File Data SMB Share Elevated
-//                             Contributor (read/write + modify NTFS ACLs)
-//
-// Leave as empty strings if the groups don't exist yet — the role
-// assignments are skipped and can be added later by supplying the IDs
-// and redeploying.
 param avdUsersGroupObjectId = ''
 param avdAdminsGroupObjectId = ''
+
+// -----------------------------------------------------------------------------
+// AVD CONTROL PLANE (chunk 5)
+// -----------------------------------------------------------------------------
+
+// Resource names — internal identifiers, kept short and functional.
+param hostPoolName = 'hp-avd'
+param workspaceName = 'ws-avd'
+param applicationGroupName = 'ag-avd-desktop'
+
+// Friendly names — what end users see in the AVD client.
+param hostPoolFriendlyName = 'AVD Host Pool'
+param workspaceFriendlyName = 'AVD Workspace'
+param applicationGroupFriendlyName = 'Desktop'
+
+// Max concurrent sessions per session host. Depends on VM size — typical
+// ranges: 2-vCPU/8GB VMs handle ~6-8, 4-vCPU/16GB handle ~10-12,
+// 8-vCPU/32GB handle ~16-20. Customer-tunable.
+param maxSessionLimit = 10
+
+// Power hosts on when a user connects. Cost saver — hosts can be powered
+// off when idle and auto-start on demand. Requires the AVD service
+// principal to have "Desktop Virtualization Power On Contributor" on the
+// subscription where session hosts live. Skip this if scaling plans are
+// managing power state instead.
+param startVMOnConnect = false

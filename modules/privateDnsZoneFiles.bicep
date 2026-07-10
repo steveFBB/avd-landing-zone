@@ -1,17 +1,20 @@
 // Private DNS zone for Azure Files privatelink
 //
-// The zone name is fixed by Azure — Azure Files private endpoints publish
-// their A records to exactly this zone, so parameterising it would be a
-// footgun.
-//
-// This module creates just the zone. VNet links are separate resources
-// (see privateDnsZoneVnetLink.bicep) so each VNet-to-zone link can be
-// deployed idempotently from any RG.
+// The zone name is derived from the current Azure environment's storage
+// suffix so the template also works in Azure Government (usgovcloudapi.net)
+// and Azure China (chinacloudapi.cn) — not just public Azure. The zone
+// itself is always deployed to 'global' because private DNS zones are
+// non-regional.
 
-param location string = 'global'  // Private DNS zones are always global
+param location string = 'global'
+
+// environment().suffixes.storage returns e.g. 'core.windows.net' for public
+// Azure. The privatelink zone name for Azure Files is always the storage
+// suffix prefixed with 'privatelink.file.'.
+var zoneName = 'privatelink.file.${environment().suffixes.storage}'
 
 resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
-  name: 'privatelink.file.core.windows.net'
+  name: zoneName
   location: location
 }
 

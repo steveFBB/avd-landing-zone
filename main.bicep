@@ -100,14 +100,26 @@ param routeTableMgmtAdminName string
 //
 // PRIVATE ENDPOINT + DNS + RBAC (chunk 4)
 //
-@description('Name of the private endpoint for the FSLogix storage account.')
 param fslogixPrivateEndpointName string
-
-@description('Entra ID object ID of the AVD users group. Empty string skips the role assignment.')
 param avdUsersGroupObjectId string = ''
-
-@description('Entra ID object ID of the AVD admins group. Empty string skips the role assignment.')
 param avdAdminsGroupObjectId string = ''
+
+//
+// AVD CONTROL PLANE (chunk 5)
+//
+param hostPoolName string
+param hostPoolFriendlyName string
+param workspaceName string
+param workspaceFriendlyName string
+param applicationGroupName string
+param applicationGroupFriendlyName string
+
+@minValue(1)
+@maxValue(999)
+param maxSessionLimit int
+
+@description('Power on session hosts when a user connects. Requires the Desktop Virtualization Power On Contributor role for the AVD SP.')
+param startVMOnConnect bool
 
 //
 // DERIVED
@@ -474,9 +486,6 @@ module fslogixDiag 'modules/storageDiagnostics.bicep' = {
 //
 // PRIVATE DNS ZONE + LINKS (chunk 4)
 //
-// The zone lives in the storage RG. It's linked to the AVD VNet (session
-// hosts must resolve it), the hub VNet (for future on-prem connectivity
-// via VPN/ER), and the mgmt VNet (for admin jump boxes).
 module privateDnsZoneFiles 'modules/privateDnsZoneFiles.bicep' = {
   name: 'privateDnsZoneFiles'
   scope: resourceGroup(storageRgName)
@@ -516,8 +525,6 @@ module dnsLinkMgmt 'modules/privateDnsZoneVnetLink.bicep' = {
 //
 // PRIVATE ENDPOINT (chunk 4)
 //
-// Lives in the storage RG (where the storage account is) but the PE's NIC
-// consumes an IP from the AVD session host subnet.
 module fslogixPrivateEndpoint 'modules/fslogixPrivateEndpoint.bicep' = {
   name: 'fslogixPrivateEndpoint'
   scope: resourceGroup(storageRgName)
@@ -533,8 +540,6 @@ module fslogixPrivateEndpoint 'modules/fslogixPrivateEndpoint.bicep' = {
 //
 // FSLOGIX RBAC (chunk 4)
 //
-// Grants the AVD user and admin groups access to the file share. Both
-// group IDs are optional — assignments are skipped when empty.
 module fslogixRbac 'modules/fslogixRbac.bicep' = {
   name: 'fslogixRbac'
   scope: resourceGroup(storageRgName)
@@ -548,6 +553,52 @@ module fslogixRbac 'modules/fslogixRbac.bicep' = {
 }
 
 //
+// AVD CONTROL PLANE (chunk 5)
+//
+// Host pool → application group → workspace. The workspace is the "hub"
+// end users subscribe to; the application group is what shows up under
+// the workspace (a Desktop in this chunk); the host pool is where session
+// hosts will register in chunk 6.
+//
+module hostPool 'modules/avdHostPool.bicep' = {
+  name: 'hostPool'
+  scope: resourceGroup(avdRgName)
+  dependsOn: [resourceGroups]
+  params: {
+    location: location
+    hostPoolName: hostPoolName
+    hostPoolFriendlyName: hostPoolFriendlyName
+    maxSessionLimit: maxSessionLimit
+    startVMOnConnect: startVMOnConnect
+    preferredAppGroupType: 'Desktop'
+  }
+}
+
+module applicationGroup 'modules/avdApplicationGroup.bicep' = {
+  name: 'applicationGroup'
+  scope: resourceGroup(avdRgName)
+  params: {
+    location: location
+    applicationGroupName: applicationGroupName
+    applicationGroupFriendlyName: applicationGroupFriendlyName
+    hostPoolId: hostPool.outputs.hostPoolId
+  }
+}
+
+module workspace 'modules/avdWorkspace.bicep' = {
+  name: 'workspace'
+  scope: resourceGroup(avdRgName)
+  params: {
+    location: location
+    workspaceName: workspaceName
+    workspaceFriendlyName: workspaceFriendlyName
+    applicationGroupReferences: [
+      applicationGroup.outputs.applicationGroupId
+    ]
+  }
+}
+
+//
 // OUTPUTS
 //
 output hubVnetId string = hubVnet.outputs.vnetId
@@ -557,3 +608,6 @@ output avdVnetId string = avdVnet.outputs.vnetId
 output storageAccountId string = fslogix.outputs.storageAccountId
 output logAnalyticsWorkspaceId string = logAnalytics.outputs.workspaceId
 output privateDnsZoneId string = privateDnsZoneFiles.outputs.zoneId
+output hostPoolId string = hostPool.outputs.hostPoolId
+output applicationGroupId string = applicationGroup.outputs.applicationGroupId
+output workspaceId string = workspace.outputs.workspaceId
