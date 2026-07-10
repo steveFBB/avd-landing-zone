@@ -40,7 +40,6 @@ param prodServerSubnet string
 param mgmtServersSubnet string
 param mgmtAdminSubnet string
 param avdSessionHostSubnet string
-param avdAppsSubnet string
 
 //
 // PEERINGS
@@ -92,13 +91,11 @@ param hubHasFirewall bool
 param hubFirewallInternalIp string
 
 param nsgAvdHostsName string
-param nsgAvdAppsName string
 param nsgProdServersName string
 param nsgMgmtServersName string
 param nsgMgmtAdminName string
 
 param routeTableAvdHostsName string
-param routeTableAvdAppsName string
 param routeTableProdServersName string
 param routeTableMgmtServersName string
 param routeTableMgmtAdminName string
@@ -134,16 +131,6 @@ module nsgAvdHosts 'modules/nsgAvdHosts.bicep' = {
   params: {
     location: location
     nsgName: nsgAvdHostsName
-  }
-}
-
-module nsgAvdApps 'modules/nsgPlaceholder.bicep' = {
-  name: 'nsgAvdApps'
-  scope: resourceGroup(avdRgName)
-  dependsOn: [resourceGroups]
-  params: {
-    location: location
-    nsgName: nsgAvdAppsName
   }
 }
 
@@ -191,17 +178,6 @@ module rtAvdHosts 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
   }
 }
 
-module rtAvdApps 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
-  name: 'rtAvdApps'
-  scope: resourceGroup(avdRgName)
-  dependsOn: [resourceGroups]
-  params: {
-    location: location
-    routeTableName: routeTableAvdAppsName
-    firewallInternalIp: hubFirewallInternalIp
-  }
-}
-
 module rtProdServers 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
   name: 'rtProdServers'
   scope: resourceGroup(prodRgName)
@@ -237,10 +213,6 @@ module rtMgmtAdmin 'modules/routeTableForFirewall.bicep' = if (hubHasFirewall) {
 
 //
 // VNETS — receive NSG and (optional) route table IDs directly
-//
-// The hub VNet does NOT get NSGs on its subnets:
-//  - GatewaySubnet: Microsoft says do not attach an NSG
-//  - FortiGate NIC subnets: FGT manages these itself
 //
 module hubVnet 'modules/hubVnet.bicep' = {
   name: 'hubVnet'
@@ -294,11 +266,8 @@ module avdVnet 'modules/avdVnet.bicep' = {
     vnetName: avdVnetName
     addressPrefix: avdAddressPrefix
     avdSessionHostSubnet: avdSessionHostSubnet
-    avdAppsSubnet: avdAppsSubnet
     avdSessionHostNsgId: nsgAvdHosts.outputs.nsgId
     avdSessionHostRouteTableId: hubHasFirewall ? rtAvdHosts!.outputs.routeTableId : ''
-    avdAppsNsgId: nsgAvdApps.outputs.nsgId
-    avdAppsRouteTableId: hubHasFirewall ? rtAvdApps!.outputs.routeTableId : ''
   }
 }
 

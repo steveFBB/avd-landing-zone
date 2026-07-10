@@ -1,23 +1,21 @@
 // AVD VNet
-// Contains: session host subnet, apps subnet
+// Contains: session host subnet
+//
+// Note: an "apps" subnet was previously defined here for private endpoints
+// and other AVD-adjacent services. It was removed because no resource in
+// the template used it. The AVD VNet address space stays wide (10.3.0.0/16)
+// so a dedicated subnet can be added later without touching the VNet.
 
 param location string
 param vnetName string
 param addressPrefix string
 param avdSessionHostSubnet string
-param avdAppsSubnet string
 
 @description('NSG resource ID to attach to the AVD session hosts subnet.')
 param avdSessionHostNsgId string = ''
 
 @description('Route table resource ID to attach to the AVD session hosts subnet.')
 param avdSessionHostRouteTableId string = ''
-
-@description('NSG resource ID to attach to the AVD apps subnet.')
-param avdAppsNsgId string = ''
-
-@description('Route table resource ID to attach to the AVD apps subnet.')
-param avdAppsRouteTableId string = ''
 
 resource vnet 'Microsoft.Network/virtualNetworks@2024-01-01' = {
   name: vnetName
@@ -43,23 +41,6 @@ resource snetSessionHosts 'Microsoft.Network/virtualNetworks/subnets@2024-01-01'
       id: avdSessionHostRouteTableId
     }
   }
-}
-
-resource snetApps 'Microsoft.Network/virtualNetworks/subnets@2024-01-01' = {
-  parent: vnet
-  name: 'snet-avd-apps'
-  properties: {
-    addressPrefix: avdAppsSubnet
-    networkSecurityGroup: empty(avdAppsNsgId) ? null : {
-      id: avdAppsNsgId
-    }
-    routeTable: empty(avdAppsRouteTableId) ? null : {
-      id: avdAppsRouteTableId
-    }
-  }
-  dependsOn: [
-    snetSessionHosts
-  ]
 }
 
 output vnetId string = vnet.id
