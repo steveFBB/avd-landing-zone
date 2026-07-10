@@ -2,26 +2,77 @@
 
 Infrastructure-as-code for deploying an Azure Virtual Desktop landing zone.
 
-Deploys the network, storage, and control plane needed to host AVD session hosts. Session host provisioning, admin access (Bastion / jump boxes / VPN), and backup are deliberately out of scope — those are per-customer decisions handled separately.
+Deploys the network, storage, and control plane needed to host AVD session hosts. Session host provisioning, admin access (Bastion / jump boxes / VPN), and backup are per-customer decisions handled separately.
 
 Deploys:
 
 - 5 resource groups
-- Hub-and-spoke networking: 4 VNets (hub, prod, mgmt, avd) with subnets and full-mesh peerings
+- Hub-and-spoke networking: 4 VNets (hub, prod, mgmt, avd) with subnets and hub-to-spoke peerings
 - FSLogix storage account with SMB file share, private endpoint in the session host subnet, and private DNS zone linked to AVD, hub, and mgmt VNets
-- Optional RBAC role assignments on the file share for AVD user and admin groups
-- Log Analytics workspace with diagnostic settings on VNets and storage
-- NSGs on all spoke subnets (AVD baseline rules on session hosts, placeholders elsewhere)
+- Optional Azure RBAC role assignments on the file share for AVD user and admin groups
+- Log Analytics workspace receiving infrastructure diagnostics from VNets and storage accounts. AVD Insights and session host monitoring are outside the scope of this template.
+- NSGs on all spoke subnets. The AVD subnet includes documented outbound allow rules for common AVD dependencies. Additional customer-specific security controls are expected.
 - Optional route tables forcing spoke traffic through a hub firewall (when `hubHasFirewall = true`)
 - AVD control plane: pooled host pool (depth-first), Desktop application group, and workspace
 
-## Out of scope
+## Architecture
 
-The following are intentionally not included and should be delivered per customer:
+```text
+                        Hub VNet (10.0.0.0/16)
+                    +--------------------------+
+                    | GatewaySubnet            |
+                    | Optional NVA subnets     |
+                    +-----------+--------------+
+                                |
+              +-----------------+-----------------+
+              |                 |                 |
+         hub-to-prod       hub-to-mgmt       hub-to-avd
+              |                 |                 |
+         Prod VNet          Mgmt VNet         AVD VNet
+        (10.1.0.0/16)     (10.2.0.0/16)     (10.3.0.0/16)
+              |                 |                 |
+         snet-prod-      snet-mgmt-servers    snet-avd-hosts
+           servers       snet-mgmt-admin           |
+                                                   |
+                                          +--------+--------+
+                                          |                 |
+                                    Session Hosts    Private Endpoint
+                                    (out of scope)         |
+                                                           |
+                                                 FSLogix Storage
+                                                 (rg-storage)
+                                                    |
+                                              Private DNS Zone
+                                              (linked to AVD,
+                                               hub, mgmt VNets)
 
-- **Session hosts.** VM specs, image (Marketplace / Compute Gallery / Azure Image Builder), join type (Entra ID / Active Directory), and FSLogix client configuration all vary by customer. Session hosts should register with the host pool using the registration token surfaced by the deployment output.
-- **Admin access.** Bastion, jump boxes, or existing VPN / ExpressRoute connectivity — customer's choice.
-- **Backup.** Recovery Services Vault, backup policies, and protected items should be configured once real workloads exist.
+               Log Analytics workspace in rg-mgmt
+               receives diagnostics from all VNets
+               and the storage account
+```
+
+## Scope
+
+This is a **greenfield reference deployment** optimised for hub-and-spoke topologies with an optional FortiGate NVA in the hub. It creates all resource groups and VNets itself and does not consume existing hub, DNS, or Log Analytics infrastructure.
+
+The following are handled per customer, outside this template:
+
+- **Session hosts.** VM specs, image (Marketplace / Compute Gallery / Azure Image Builder), join type (Entra ID / Active Directory), and FSLogix client configuration all vary by customer. Session hosts should register with the host pool using a registration token — see [After deployment](#after-deployment) below.
+- **Admin access.** Bastion, jump boxes, or existing VPN / ExpressRoute connectivity.
+- **Backup.** Recovery Services Vault, backup policies, and protected items — configured once real workloads exist.
+- **Azure Files identity-based authentication.** See [FSLogix share readiness](#fslogix-share-readiness) below.
+
+## Known limitations
+
+- Designed for greenfield deployments only. Does not consume existing hub VNets, Log Analytics workspaces, or private DNS zones.
+- Assumes a FortiGate-style hub network design (dedicated subnets for external / internal / HA / mgmt NICs).
+- Storage account is initially deployed with public network access enabled and must be locked down in a follow-up deployment.
+- The FSLogix private endpoint is deployed into the AVD session host subnet for simplicity. A dedicated private endpoint subnet may be preferable in larger environments.
+- Does not deploy session hosts.
+- Does not configure Azure Files identity-based authentication.
+- Does not assign users to the AVD application group.
+- Does not deploy Bastion, VPN, backup, or monitoring agents.
+- Does not configure AVD Insights, session host monitoring, AMA, or Data Collection Rules.
 
 ## Structure
 
@@ -39,20 +90,16 @@ The following are intentionally not included and should be delivered per custome
 
 ### Clone the repo locally
 
-Open the terminal in Studio Code (**Terminal → New Terminal**) and run:
+Clone the repository somewhere outside OneDrive or other synced folders (file locking can cause intermittent Bicep and Git failures). For example:
 
 ```
-mkdir C:\Projects
-cd C:\Projects
 git clone https://github.com/steveFBB/avd-bicep.git
 cd avd-bicep
 ```
 
-If `C:\Projects` already exists, you'll get an error on the first line — ignore it and continue.
-
 ### Open the cloned repo in Studio Code
 
-**File → Open Folder →** select `C:\Projects\avd-bicep`.
+**File → Open Folder →** select the cloned `avd-bicep` folder.
 
 ### Recommended extensions
 
@@ -120,7 +167,7 @@ Deployment takes 5–10 minutes.
 Check in the Azure Portal:
 
 - All five resource groups exist
-- Each VNet shows its peerings as `Connected` on both sides
+- Each VNet shows its peering to the hub as `Connected` on both sides
 - FSLogix storage account has the `profiles` file share
 - Log Analytics workspace exists in the mgmt resource group
 - Each VNet and the storage account has a diagnostic setting pointing at the workspace
@@ -133,20 +180,77 @@ Check in the Azure Portal:
 
 ### 6. Lock down public access to the storage account
 
-Once validated that clients can reach the file share via the private endpoint, run a follow-up deployment with `storagePublicNetworkAccess` changed to `'Disabled'` in your parameters file. This closes off public internet access to the storage account and forces all clients through the private endpoint.
+This deployment currently assumes the storage account is initially deployed with public network access enabled. After validating private endpoint connectivity, redeploy with `storagePublicNetworkAccess = 'Disabled'` in your parameters file. This closes off public internet access to the storage account and forces all clients through the private endpoint.
 
 ### 7. (Optional) Grant Power On rights to the AVD service principal
 
 If `startVMOnConnect = true`, the Windows Virtual Desktop service principal needs the "Desktop Virtualization Power On Contributor" role on the subscription where session hosts live. This is a one-time step per subscription, done outside this template.
 
-## What to do next
+## FSLogix share readiness
 
-The landing zone is complete but empty. To turn it into a working AVD environment:
+The template creates the storage account, file share, private endpoint, DNS, and Azure RBAC role assignments. **The share is not yet usable by FSLogix.** Before profile mounts will work, you must configure Azure Files identity-based authentication.
 
-1. **Deploy session hosts** into `snet-avd-hosts`, joined per customer requirements (Entra ID or Active Directory), with the AVD agent and boot loader extensions registering them against the host pool. Use the registration token from the deployment output.
-2. **Assign users** to the application group so they can see the desktop in the AVD client.
-3. **Configure admin access** (Bastion, jump box, VPN, etc.).
-4. **Configure backup** for the FSLogix storage account and session host disks once workloads are in place.
+Choose one of:
+
+- **AD DS Kerberos** — storage account joined to on-premises Active Directory. For hybrid environments.
+- **Microsoft Entra Kerberos** — for Entra-joined session hosts.
+- **Microsoft Entra Domain Services** — for environments using Entra Domain Services.
+
+Configure per Microsoft's Azure Files identity guidance. The Azure RBAC assignments created by this template (SMB Share Contributor / Elevated Contributor) control who can access the share, but not what NTFS permissions the files carry — that's a separate step.
+
+After enabling identity-based auth, mount the share from a domain-joined client and set NTFS permissions on the share root using `icacls`. Microsoft publishes the recommended NTFS permission set for FSLogix profile containers.
+
+Until these steps are completed, session hosts will not be able to mount FSLogix profiles from this share.
+
+## After deployment
+
+The landing zone infrastructure is complete, but the AVD environment is not yet operational. To turn it into a working AVD environment:
+
+### 1. Complete FSLogix share readiness
+
+See [FSLogix share readiness](#fslogix-share-readiness) above.
+
+### 2. Get the host pool registration token
+
+The registration token is not exposed as a deployment output because tokens are short-lived operational secrets that should not be stored in Azure deployment history. Retrieve the current token from the AVD host pool with:
+
+```
+az desktopvirtualization hostpool retrieve-registration-token \
+  --resource-group <avd-rg> \
+  --host-pool-name <host-pool-name>
+```
+
+If the token has expired, generate a new one:
+
+```
+az desktopvirtualization hostpool update \
+  --resource-group <avd-rg> \
+  --name <host-pool-name> \
+  --registration-info expiration-time=<future-iso-timestamp> registration-token-operation=Update
+```
+
+### 3. Deploy session hosts
+
+Session hosts should be VMs in `snet-avd-hosts`, joined per customer requirements (Entra ID or Active Directory), with the AVD agent and boot loader extensions registering them against the host pool using the token from step 2.
+
+### 4. Assign users to the application group
+
+The Entra ID group set in `avdUsersGroupObjectId` gets Azure RBAC on the FSLogix share, but does **not** currently get assigned to the AVD application group by this template. Assign users or groups the "Desktop Virtualization User" role on the application group so they can see the desktop in the AVD client:
+
+```
+az role assignment create \
+  --assignee <group-object-id> \
+  --role "Desktop Virtualization User" \
+  --scope <application-group-resource-id>
+```
+
+### 5. Configure admin access
+
+Bastion, jump box, VPN, ExpressRoute — customer's choice.
+
+### 6. Configure backup
+
+Once real workloads exist, configure a Recovery Services Vault and backup policies for the FSLogix storage account and session host disks.
 
 ## Teardown
 
