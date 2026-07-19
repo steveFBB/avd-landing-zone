@@ -93,8 +93,8 @@ The following are handled per customer, outside this template:
 Clone the repository somewhere outside OneDrive or other synced folders (file locking can cause intermittent Bicep and Git failures). For example:
 
 ```
-git clone https://github.com/steveFBB/avd-bicep.git
-cd avd-bicep
+git clone https://github.com/steveFBB/avd-landing-zone.git
+cd avd-landing-zone
 ```
 
 ### Open the cloned repo in Studio Code
